@@ -1,0 +1,233 @@
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Cam = workspace.CurrentCamera
+
+local isLockingOn = false
+local lockedTarget = nil
+local targetHighlight = nil
+
+-- Define the whitelisted player names
+local whitelistedPlayers = {
+    ["Cooltrophy60"] = true,
+    ["0NLYR4GE1"] = true,
+    ["h3boy1"] = true,
+    ["arviexd421"] = true,
+    ["0NLYS3RENITY1"] = true
+}
+
+-- Check if the player is whitelisted
+local localPlayer = Players.LocalPlayer
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "LosSolosGG Security",
+    Text = "Checking PlayerUsername,ID...",
+    Duration = 5,
+})
+
+wait(5)
+
+if not whitelistedPlayers[localPlayer.Name] then
+    localPlayer:Kick("You are not authorized to use this script.")
+    return -- Stop the script from executing further
+end
+
+-- Health and name labels
+local healthLabels = {}
+local nameLabels = {}
+local distanceLabels = {}
+
+local function createLabels(player)
+    if not healthLabels[player] then
+        local healthLabel = Drawing.new("Text")
+        healthLabel.Visible = false
+        healthLabel.Color = Color3.fromRGB(255, 0, 0)
+        healthLabel.Size = 8
+        healthLabels[player] = healthLabel
+
+        local nameLabel = Drawing.new("Text")
+        nameLabel.Visible = false
+        nameLabel.Color = Color3.fromRGB(255, 255, 255)
+        nameLabel.Size = 8
+        nameLabels[player] = nameLabel
+
+        local distanceLabel = Drawing.new("Text")
+        distanceLabel.Visible = false
+        distanceLabel.Color = Color3.fromRGB(255, 255, 0)
+        distanceLabel.Size = 8
+        distanceLabels[player] = distanceLabel
+    end
+end
+
+local function updateESP()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            createLabels(player)
+
+            local humanoid = player.Character and player.Character:FindFirstChild("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                local headPos, isVisible = Cam:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+
+                if isVisible then
+                    local healthLabel = healthLabels[player]
+                    local nameLabel = nameLabels[player]
+                    local distanceLabel = distanceLabels[player]
+
+                    healthLabel.Text = "Health: " .. math.floor(humanoid.Health) .. "/" .. humanoid.MaxHealth
+                    healthLabel.Position = Vector2.new(headPos.x, headPos.y - 20)
+                    healthLabel.Visible = true
+
+                    nameLabel.Text = "Name: " .. player.Name
+                    nameLabel.Position = Vector2.new(headPos.x, headPos.y - 40)
+                    nameLabel.Visible = true
+
+                    local playerDistance = (Cam.CFrame.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                    distanceLabel.Text = "Distance: " .. math.floor(playerDistance) .. " studs"
+                    distanceLabel.Position = Vector2.new(headPos.x, headPos.y - 60)
+                    distanceLabel.Visible = true
+                else
+                    healthLabels[player].Visible = false
+                    nameLabels[player].Visible = false
+                    distanceLabels[player].Visible = false
+                end
+            else
+                healthLabels[player].Visible = false
+                nameLabels[player].Visible = false
+                distanceLabels[player].Visible = false
+            end
+        end
+    end
+end
+
+local function removeLabels(player)
+    if healthLabels[player] then
+        healthLabels[player]:Remove()
+        healthLabels[player] = nil
+    end
+    if nameLabels[player] then
+        nameLabels[player]:Remove()
+        nameLabels[player] = nil
+    end
+    if distanceLabels[player] then
+        distanceLabels[player]:Remove()
+        distanceLabels[player] = nil
+    end
+end
+
+local function onPlayerRemoving(player)
+    removeLabels(player)
+end
+
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(function(character)
+        removeLabels(player)
+    end)
+end
+
+local function onKeyDown(input)
+    if input.KeyCode == Enum.KeyCode.Delete then
+        RunService:UnbindFromRenderStep("ESPUpdate")
+        for _, player in pairs(Players:GetPlayers()) do
+            removeLabels(player)
+        end
+        lockedTarget = nil
+        if targetHighlight then
+            targetHighlight:Destroy()
+            targetHighlight = nil
+        end
+    elseif input.KeyCode == Enum.KeyCode.T then
+        if whitelistedPlayers[Players.LocalPlayer.Name] then
+            isLockingOn = not isLockingOn
+            if isLockingOn then
+                lockedTarget = nil
+            end
+        else
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "Access Denied",
+                Text = "You are not authorized to use this feature.",
+                Duration = 5,
+            })
+        end
+    end
+end
+
+UserInputService.InputBegan:Connect(onKeyDown)
+
+local function lookAt(target)
+    local lookVector = (target - Cam.CFrame.Position).unit
+    local newCFrame = CFrame.new(Cam.CFrame.Position, Cam.CFrame.Position + lookVector)
+    Cam.CFrame = newCFrame
+end
+
+local function getClosestPlayerInFOV(trg_part)
+    local nearest = nil
+    local last = math.huge
+    local playerMousePos = Cam.ViewportSize / 2
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            local part = player.Character and player.Character:FindFirstChild(trg_part)
+            if part then
+                local ePos, isVisible = Cam:WorldToViewportPoint(part.Position)
+                local distance = (Vector2.new(ePos.x, ePos.y) - playerMousePos).Magnitude
+                
+                local playerDistance = (Cam.CFrame.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                
+                if distance < last and isVisible and playerDistance <= 200 then
+                    last = distance
+                    nearest = player
+                end
+            end
+        end
+    end
+
+    return nearest
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+for _, player in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(player)
+end
+
+RunService.RenderStepped:Connect(function()
+    updateESP()
+    
+    if isLockingOn then
+        if not lockedTarget then
+            lockedTarget = getClosestPlayerInFOV("Head")
+        end
+
+        if lockedTarget and lockedTarget.Character and lockedTarget.Character:FindFirstChild("Head") then
+            lookAt(lockedTarget.Character.Head.Position)
+
+            -- Highlight logic
+            if not targetHighlight then
+                targetHighlight = Instance.new("Highlight")
+                targetHighlight.FillTransparency = 0.75
+                targetHighlight.OutlineTransparency = 0.75
+                targetHighlight.FillColor = Color3.new(1, 1, 1)
+                targetHighlight.OutlineColor = Color3.new(1, 1, 1)
+		targetHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                targetHighlight.Adornee = lockedTarget.Character
+                targetHighlight.Parent = lockedTarget.Character
+            end
+        else
+            if targetHighlight then
+                targetHighlight:Destroy()
+                targetHighlight = nil
+            end
+        end
+    else
+        if targetHighlight then
+            targetHighlight:Destroy()
+            targetHighlight = nil
+        end
+    end
+end)
+
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "LosSolosGG Script",
+    Text = "Thank you for using LosSolosGG script! This script is free, so if you bought it, you got scammed!",
+    Duration = 15,
+})
